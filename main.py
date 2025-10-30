@@ -1,60 +1,62 @@
-import ftplib
 import os
 import time
 import traceback
 from datetime import datetime
 from dotenv import load_dotenv
+import paramiko
 
 def log(message: str) -> None:
     """Печатает сообщение с текущим временем."""
     print(f"{datetime.now().strftime('%H:%M:%S')} {message}")
 
-def upload_folder(ftp: ftplib.FTP, local_folder: str, remote_folder: str) -> None:
-    """Рекурсивно загружает содержимое локальной папки на FTP."""
+def sftp_upload_dir(sftp: paramiko.SFTPClient, local_dir: str, remote_dir: str) -> None:
+    """Рекурсивно копирует локальную папку на SFTP-сервер."""
     try:
-        ftp.cwd(remote_folder)
-    except ftplib.error_perm:
-        # Создаем директорию, если её нет
-        ftp.mkd(remote_folder)
-        ftp.cwd(remote_folder)
+        sftp.chdir(remote_dir)
+    except IOError:
+        sftp.mkdir(remote_dir)
+        sftp.chdir(remote_dir)
 
-    for item in os.listdir(local_folder):
-        local_path = os.path.join(local_folder, item)
+    for item in os.listdir(local_dir):
+        local_path = os.path.join(local_dir, item)
+        remote_path = os.path.join(remote_dir, item)
         if os.path.isdir(local_path):
             try:
-                ftp.mkd(item)
-            except ftplib.error_perm:
-                pass  # Папка уже существует
-            ftp.cwd(item)
-            upload_folder(ftp, local_path, ".")
-            ftp.cwd("..")
+                sftp.stat(remote_path)
+            except FileNotFoundError:
+                sftp.mkdir(remote_path)
+            sftp_upload_dir(sftp, local_path, remote_path)
         else:
-            with open(local_path, "rb") as f:
-                ftp.storbinary(f"STOR {item}", f)
+            sftp.put(local_path, remote_path)
             try:
-                ftp.sendcmd(f"SITE CHMOD 777 {item}")
+                sftp.chmod(remote_path, 0o777)
             except Exception:
-                pass  # Некоторые FTP не поддерживают CHMOD
-
+                pass  # Некоторые сервера могут не позволять смену прав
 def main():
     load_dotenv()
-    FTP_SERVER = os.getenv("FTP_SERVER")
-    FTP_USER = os.getenv("FTP_USER")
-    FTP_PASSWORD = os.getenv("FTP_PASSWORD")
-    FTP_SERVER_FOLDER_PATH = os.getenv("FTP_SERVER_FOLDER_PATH")
+    SFTP_SERVER = os.getenv("SFTP_SERVER")
+    SFTP_PORT = int(os.getenv("SFTP_PORT", "22"))
+    SFTP_USER = os.getenv("SFTP_USER")
+    SFTP_PASSWORD = os.getenv("SFTP_PASSWORD")
+    SFTP_SERVER_FOLDER_PATH = os.getenv("SFTP_SERVER_FOLDER_PATH")
     LOCAL_FOLDER = os.getenv("LOCAL_FOLDER")
     PERIOD_SEC = int(os.getenv("PERIOD_SEC", "60"))
 
-    if not all([FTP_SERVER, FTP_USER, FTP_PASSWORD, LOCAL_FOLDER, FTP_SERVER_FOLDER_PATH]):
+    if not all([SFTP_SERVER, SFTP_USER, SFTP_PASSWORD, SFTP_SERVER_FOLDER_PATH, LOCAL_FOLDER]):
         log("Ошибка: не все параметры заданы в .env")
         return
 
     while True:
         try:
             log("Запущено копирование")
-            with ftplib.FTP(FTP_SERVER) as ftp:
-                ftp.login(FTP_USER, FTP_PASSWORD)
-                upload_folder(ftp, LOCAL_FOLDER, FTP_SERVER_FOLDER_PATH)
+            transport = paramiko.Transport((SFTP_SERVER, SFTP_PORT))
+            transport.connect(username=SFTP_USER, password=SFTP_PASSWORD)
+            sftp = paramiko.SFTPClient.from_transport(transport)
+
+            sftp_upload_dir(sftp, LOCAL_FOLDER, SFTP_SERVER_FOLDER_PATH)
+
+            sftp.close()
+            transport.close()
             log("Копирование успешно завершено")
         except Exception as e:
             log(f"Ошибка: {e}")
@@ -62,6 +64,5 @@ def main():
         time.sleep(PERIOD_SEC)
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
