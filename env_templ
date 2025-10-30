@@ -1,10 +1,3 @@
-;FTP_SERVER=ftp.example.com
-;FTP_USER=username
-;FTP_PASSWORD=password
-;FTP_SERVER_FOLDER_PATH=/remote/path
-;LOCAL_FOLDER=/home/user/data
-;PERIOD_SEC=300
-
 SFTP_SERVER=example.com
 SFTP_PORT=22
 SFTP_USER=username
