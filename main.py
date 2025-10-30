@@ -68,7 +68,7 @@ def delete_remote_folder(sftp: paramiko.SFTPClient, remote_path: str) -> None:
                 delete_remote_folder(sftp, entry_path)
             except IOError:
                 sftp.remove(entry_path)
-                sftp.rmdir(remote_path)
+        sftp.rmdir(remote_path)
     except Exception as e:
         log(f"Ошибка при удалении папки {remote_path}: {e}")
 
